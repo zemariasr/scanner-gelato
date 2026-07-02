@@ -191,37 +191,46 @@ async function entregarPedido(){
     setStatus("Nenhum pedido selecionado.");
     return;
   }
-  const botao=document.getElementById("btnEntregar");
-  botao.disabled=true;
+
+  const botao = document.getElementById("btnEntregar");
+  botao.disabled = true;
+
   setStatus("Registrando entrega...");
-  try{
-    const url=API_BASE+"/entregarPedido?token="+encodeURIComponent(tokenAtual)+"&t="+Date.now();
-    const resposta=await fetch(url);
-    let dados=null;
-    try{
-      dados=await resposta.json();
-    }catch(e){
-      const texto=await resposta.text();
-      dados={sucesso:false,mensagem:texto||"Resposta inválida da API"};
+
+  const url = API_BASE + "/entregarPedido?token=" + encodeURIComponent(tokenAtual) + "&t=" + Date.now();
+
+  const img = new Image();
+  img.src = url;
+
+  setTimeout(async () => {
+    try {
+      const resposta = await fetch(
+        API_BASE + "/buscaPedido?token=" + encodeURIComponent(tokenAtual) + "&t=" + Date.now()
+      );
+
+      const pedido = await resposta.json();
+
+      if(pedido.status === "Entregue"){
+        document.getElementById("pedidoStatus").innerHTML =
+          `<div class="sucesso">✅ PEDIDO ENTREGUE COM SUCESSO</div>`;
+
+        botao.style.display = "none";
+        setStatus("Entrega registrada.");
+
+        setTimeout(() => {
+          reiniciarScanner();
+        }, 2500);
+
+      } else {
+        setStatus("A entrega ainda não foi registrada.");
+        botao.disabled = false;
+      }
+
+    } catch(err) {
+      setStatus("Erro ao confirmar entrega.\n" + err);
+      botao.disabled = false;
     }
-    if(resposta.ok&&dados&&dados.sucesso===true){
-      document.getElementById("pedidoStatus").innerHTML=
-        `<div class="sucesso">✅ PEDIDO ENTREGUE COM SUCESSO</div>`;
-      botao.style.display="none";
-      setStatus("Entrega registrada.");
-      if(navigator.vibrate){navigator.vibrate(180);}
-      setTimeout(()=>{reiniciarScanner();},2500);
-      return;
-    }
-    document.getElementById("pedidoStatus").innerHTML=
-      `<div class="alerta">⚠️ ${dados&&dados.mensagem?dados.mensagem:"Não foi possível registrar a entrega"}</div>`;
-    botao.disabled=false;
-    setStatus("Erro ao registrar entrega.");
-  }catch(err){
-    console.error(err);
-    setStatus("Erro ao registrar entrega.\n"+err);
-    botao.disabled=false;
-  }
+  }, 1200);
 }
 
 function reiniciarScanner(){iniciarScanner();}

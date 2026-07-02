@@ -170,11 +170,9 @@ async function entregarPedido(){
   setStatus("Registrando entrega...");
 
   try{
-    const resposta = await fetch(`${API_BASE}/entregarPedido`, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({token: tokenAtual})
-    });
+    const resposta = await fetch(
+  `${API_BASE}/entregarPedido?token=${encodeURIComponent(tokenAtual)}`
+);
 
     const dados = await resposta.json();
 

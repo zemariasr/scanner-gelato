@@ -201,34 +201,29 @@ async function entregarPedido(){
 
   try {
     const resposta = await fetch(url);
-    const texto = await resposta.text();
-
-    setStatus(
-      "Resposta da entrega:\n" +
-      "HTTP: " + resposta.status + "\n" +
-      texto
-    );
-
-    let dados = {};
-    try {
-      dados = JSON.parse(texto);
-    } catch(e) {}
+    const dados = await resposta.json();
 
     if(resposta.ok && dados.sucesso === true){
       document.getElementById("pedidoStatus").innerHTML =
         `<div class="sucesso">✅ PEDIDO ENTREGUE COM SUCESSO</div>`;
 
       botao.style.display = "none";
+      setStatus("Entrega registrada.");
 
       setTimeout(() => {
         reiniciarScanner();
       }, 2500);
+
     } else {
+      document.getElementById("pedidoStatus").innerHTML =
+        `<div class="alerta">⚠️ ${dados.mensagem || "Não foi possível registrar a entrega"}</div>`;
+
       botao.disabled = false;
+      setStatus("Erro ao registrar entrega.");
     }
 
   } catch(err) {
-    setStatus("Erro real no botão:\n" + err);
+    setStatus("Erro ao registrar entrega.");
     botao.disabled = false;
   }
 }

@@ -10,19 +10,22 @@
 body{margin:0;font-family:Arial,sans-serif;background:#111827;color:white}
 header{padding:16px;text-align:center;background:#1f2937}
 header h1{margin:0;font-size:22px}
-#reader{width:100%;background:black;min-height:260px}
+#reader{width:100%;min-height:260px;background:black}
 #status{padding:14px;text-align:center;font-size:18px;background:#374151;white-space:pre-wrap}
 .card{margin:16px;padding:18px;border-radius:14px;background:white;color:#111827;display:none}
-.card h2{margin-top:0;font-size:26px}
-.item{padding:12px 0;border-bottom:1px solid #ddd;font-size:20px}
-.item strong{display:block;font-size:22px}
-.badge{display:inline-block;padding:8px 12px;border-radius:8px;font-weight:bold;margin-top:10px}
+.card h2{margin-top:0;font-size:28px}
+.item{padding:14px 0;border-bottom:1px solid #ddd;font-size:20px}
+.item strong{display:block;font-size:24px}
+.sabor{margin-top:6px;font-size:22px}
+.quantidade{margin-top:6px;font-size:20px;font-weight:bold}
+.badge{display:inline-block;padding:10px 14px;border-radius:8px;font-weight:bold;margin-top:12px;font-size:20px}
 .pago{background:#dcfce7;color:#166534}
 .entregue{background:#fee2e2;color:#991b1b}
 button{width:100%;padding:22px;font-size:24px;font-weight:bold;border:none;border-radius:12px;margin-top:18px}
 #btnEntregar{background:#16a34a;color:white}
 #btnNovaLeitura{background:#2563eb;color:white}
 .alerta{text-align:center;font-size:26px;font-weight:bold;color:#991b1b}
+.sucesso{text-align:center;font-size:26px;font-weight:bold;color:#166534}
 </style>
 </head>
 <body>
@@ -34,176 +37,194 @@ button{width:100%;padding:22px;font-size:24px;font-weight:bold;border:none;borde
   <div id="itens"></div>
   <div id="pedidoStatus"></div>
   <button id="btnEntregar" onclick="entregarPedido()">ENTREGAR PEDIDO</button>
-  <button id="btnNovaLeitura" onclick="reiniciarScanner()">LER OUTRO QR CODE</button>
+  <button id="btnNovaLeitura" onclick="reiniciarScanner()">NOVA LEITURA</button>
 </div>
 <script>
-window.onerror = function(msg, src, line, col, err){
-  document.getElementById("status").innerText =
-    "Erro no scanner:\\n" + msg + "\\nLinha: " + line;
+window.onerror=function(msg,src,line,col,err){
+  setStatus("Erro no scanner:\n"+msg+"\nLinha: "+line);
 };
 
-const API_BASE = "https://zemariasr.wixsite.com/gelatogalattico/_functions";
-let scanner = null;
-let tokenAtual = null;
-let lendo = false;
+const API_BASE="https://zemariasr.wixsite.com/gelatogalattico/_functions";
+let scanner=null;
+let tokenAtual=null;
+let lendo=false;
 
-function setStatus(texto){document.getElementById("status").innerText = texto;}
-function mostrarCard(){document.getElementById("pedidoCard").style.display = "block";}
-function esconderCard(){document.getElementById("pedidoCard").style.display = "none";}
+function setStatus(texto){document.getElementById("status").innerText=texto;}
+function mostrarCard(){document.getElementById("pedidoCard").style.display="block";}
+function esconderCard(){document.getElementById("pedidoCard").style.display="none";}
 
 function extrairToken(texto){
-  if(!texto) return "";
+  if(!texto)return "";
   try{
-    const url = new URL(texto);
-    const token = url.searchParams.get("token");
-    if(token) return token.trim();
+    const url=new URL(texto);
+    const token=url.searchParams.get("token");
+    if(token)return token.trim();
   }catch(e){}
   return texto.trim();
 }
 
+async function pararScanner(){
+  if(!scanner)return;
+  try{await scanner.stop();}catch(e){}
+  try{await scanner.clear();}catch(e){}
+}
+
 async function iniciarScanner(){
+  await pararScanner();
   esconderCard();
+  tokenAtual=null;
+  lendo=false;
+  document.getElementById("btnEntregar").disabled=false;
+  document.getElementById("btnEntregar").style.display="block";
   setStatus("Abrindo câmera...");
-  lendo = false;
-
-  if(scanner){
-    try{ await scanner.clear(); }catch(e){}
-  }
-
-  scanner = new Html5Qrcode("reader");
-
+  scanner=new Html5Qrcode("reader");
   try{
     await scanner.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: 250 },
-      async (decodedText)=>{
-        if(lendo) return;
-        lendo = true;
-
-        const token = extrairToken(decodedText);
-        setStatus("QR lido. Token: " + token + "\\nConsultando pedido...");
-
-        try{ await scanner.stop(); }catch(e){}
-
+      {facingMode:"environment"},
+      {fps:10,qrbox:250},
+      async(decodedText)=>{
+        if(lendo)return;
+        lendo=true;
+        const token=extrairToken(decodedText);
+        tokenAtual=token;
+        setStatus("QR lido. Consultando pedido...");
+        if(navigator.vibrate){navigator.vibrate(80);}
+        await pararScanner();
         await buscarPedido(token);
       }
     );
     setStatus("Aponte a câmera para o QR Code.");
   }catch(err){
-    setStatus("Erro ao acessar a câmera. Abra esta página diretamente no Safari e permita o uso da câmera.\\n" + err);
     console.error(err);
+    setStatus("Erro ao acessar a câmera.\nAbra esta página diretamente no Safari e permita o uso da câmera.");
   }
 }
 
 async function buscarPedido(token){
-  tokenAtual = token;
+  if(!token){
+    mostrarPedidoNaoEncontrado("Token vazio");
+    return;
+  }
   try{
-    const url = `${API_BASE}/buscaPedido?token=${encodeURIComponent(token)}`;
-    const resposta = await fetch(url, { method: "GET" });
-
+    const url=API_BASE+"/buscaPedido?token="+encodeURIComponent(token)+"&t="+Date.now();
+    const resposta=await fetch(url);
     if(!resposta.ok){
-      const texto = await resposta.text();
-      setStatus("Pedido não encontrado.\\nResposta: " + resposta.status + "\\n" + texto);
+      const texto=await resposta.text();
+      console.error("Erro buscaPedido:",resposta.status,texto);
+      setStatus("Pedido não encontrado.");
       mostrarPedidoNaoEncontrado(token);
       return;
     }
-
-    const pedido = await resposta.json();
+    const pedido=await resposta.json();
     mostrarPedido(pedido);
-
   }catch(err){
     console.error(err);
-    setStatus("Erro ao consultar pedido.\\nProvável bloqueio CORS ou erro na API.\\n" + err);
+    setStatus("Erro ao consultar pedido.\n"+err);
   }
 }
 
 function mostrarPedidoNaoEncontrado(token){
   mostrarCard();
-  document.getElementById("pedidoNumero").innerText = "Pedido não encontrado";
-  document.getElementById("itens").innerHTML = `<p>Token lido: ${token}</p>`;
-  document.getElementById("pedidoStatus").innerHTML = "";
-  document.getElementById("btnEntregar").style.display = "none";
+  document.getElementById("pedidoNumero").innerText="Pedido não encontrado";
+  document.getElementById("itens").innerHTML="<p>Token lido:</p><p><strong>"+token+"</strong></p>";
+  document.getElementById("pedidoStatus").innerHTML="";
+  document.getElementById("btnEntregar").style.display="none";
+}
+
+function obterSabor(item){
+  if(Array.isArray(item.options)){
+    const sabor=item.options.find(op=>{
+      const nomeOpcao=String(op.option||"").toLowerCase();
+      return nomeOpcao.includes("sabor");
+    });
+    if(sabor&&sabor.selection){return sabor.selection;}
+    if(item.options.length>0){
+      return item.options.map(op=>op.selection).filter(Boolean).join(" / ");
+    }
+  }
+  return item.name||item.productName||"Produto";
 }
 
 function montarItens(itens){
-  if(!Array.isArray(itens)) return "<p>Itens não disponíveis.</p>";
+  if(!Array.isArray(itens)){return "<p>Itens não disponíveis.</p>";}
   return itens.map(item=>{
-    const nome = item.name || item.productName || "Produto";
-    const qtd = item.quantity || 1;
-    let sabor = "";
-    if(Array.isArray(item.options) && item.options.length > 0){
-      sabor = item.options.map(op=>`${op.option}: ${op.selection}`).join("<br>");
-    }
-    return `<div class="item"><strong>${qtd}x ${nome}</strong>${sabor ? `<div>${sabor}</div>` : ""}</div>`;
+    const nomeProduto=item.name||item.productName||"Produto";
+    const sabor=obterSabor(item);
+    const quantidade=item.quantity||1;
+    return `
+      <div class="item">
+        <strong>🍨 ${sabor}</strong>
+        <div class="sabor">${nomeProduto}</div>
+        <div class="quantidade">${quantidade} ${quantidade===1?"unidade":"unidades"}</div>
+      </div>
+    `;
   }).join("");
 }
 
 function formatarData(data){
-  if(!data) return "";
+  if(!data)return "";
   try{return new Date(data).toLocaleString("pt-BR");}
-  catch(e){return data;}
+  catch(e){return String(data);}
 }
 
 function mostrarPedido(pedido){
   mostrarCard();
-  document.getElementById("pedidoNumero").innerText = `Pedido #${pedido.numero}`;
-  document.getElementById("itens").innerHTML = montarItens(pedido.itens);
-
-  if(pedido.status === "Entregue"){
-    document.getElementById("pedidoStatus").innerHTML =
+  document.getElementById("pedidoNumero").innerText="Pedido #"+pedido.numero;
+  document.getElementById("itens").innerHTML=montarItens(pedido.itens);
+  if(pedido.status==="Entregue"){
+    document.getElementById("pedidoStatus").innerHTML=
       `<div class="alerta">⚠️ PEDIDO JÁ ENTREGUE</div>
-       <div class="badge entregue">Entregue em ${formatarData(pedido.entregueEm)}</div>`;
-    document.getElementById("btnEntregar").style.display = "none";
+       <div class="badge entregue">${pedido.entregueEm ? "Entregue em "+formatarData(pedido.entregueEm) : "Pedido já retirado"}</div>`;
+    document.getElementById("btnEntregar").style.display="none";
     setStatus("Pedido já entregue.");
+    if(navigator.vibrate){navigator.vibrate([120,80,120]);}
     return;
   }
-
-  document.getElementById("pedidoStatus").innerHTML =
-    `<div class="badge pago">STATUS: ${pedido.status}</div>`;
-  document.getElementById("btnEntregar").style.display = "block";
+  document.getElementById("pedidoStatus").innerHTML=
+    `<div class="badge pago">STATUS: ${pedido.status||"Pago"}</div>`;
+  document.getElementById("btnEntregar").style.display="block";
   setStatus("Pedido localizado.");
 }
 
 async function entregarPedido(){
-  if(!tokenAtual) return;
-  document.getElementById("btnEntregar").disabled = true;
+  if(!tokenAtual){
+    setStatus("Nenhum pedido selecionado.");
+    return;
+  }
+  const botao=document.getElementById("btnEntregar");
+  botao.disabled=true;
   setStatus("Registrando entrega...");
-
   try{
-    const resposta = await fetch(
-  `${API_BASE}/entregarPedido?token=${encodeURIComponent(tokenAtual)}`
-);
-
-    const dados = await resposta.json();
-
-    if(dados.sucesso){
-      document.getElementById("pedidoStatus").innerHTML =
-        `<div class="badge pago">✅ PEDIDO ENTREGUE COM SUCESSO</div>`;
-      document.getElementById("btnEntregar").style.display = "none";
-      setStatus("Entrega registrada.");
-      setTimeout(()=>{reiniciarScanner();}, 2500);
-    }else{
-      document.getElementById("pedidoStatus").innerHTML =
-        `<div class="alerta">⚠️ ${dados.mensagem}</div>
-         <div class="badge entregue">${formatarData(dados.entregueEm)}</div>`;
-      document.getElementById("btnEntregar").style.display = "none";
-      setStatus("Pedido já entregue.");
+    const url=API_BASE+"/entregarPedido?token="+encodeURIComponent(tokenAtual)+"&t="+Date.now();
+    const resposta=await fetch(url);
+    let dados=null;
+    try{
+      dados=await resposta.json();
+    }catch(e){
+      const texto=await resposta.text();
+      dados={sucesso:false,mensagem:texto||"Resposta inválida da API"};
     }
+    if(resposta.ok&&dados&&dados.sucesso===true){
+      document.getElementById("pedidoStatus").innerHTML=
+        `<div class="sucesso">✅ PEDIDO ENTREGUE COM SUCESSO</div>`;
+      botao.style.display="none";
+      setStatus("Entrega registrada.");
+      if(navigator.vibrate){navigator.vibrate(180);}
+      setTimeout(()=>{reiniciarScanner();},2500);
+      return;
+    }
+    document.getElementById("pedidoStatus").innerHTML=
+      `<div class="alerta">⚠️ ${dados&&dados.mensagem?dados.mensagem:"Não foi possível registrar a entrega"}</div>`;
+    botao.disabled=false;
+    setStatus("Erro ao registrar entrega.");
   }catch(err){
     console.error(err);
-    setStatus("Erro ao registrar entrega:\n" + err);
-    document.getElementById("btnEntregar").disabled = false;
+    setStatus("Erro ao registrar entrega.\n"+err);
+    botao.disabled=false;
   }
 }
 
-function reiniciarScanner(){
-  tokenAtual = null;
-  lendo = false;
-  document.getElementById("btnEntregar").disabled = false;
-  document.getElementById("btnEntregar").style.display = "block";
-  iniciarScanner();
-}
-
+function reiniciarScanner(){iniciarScanner();}
 iniciarScanner();
 </script>
 </body>

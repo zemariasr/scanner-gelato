@@ -193,7 +193,7 @@ async function entregarPedido(){
     }
   }catch(err){
     console.error(err);
-    setStatus("Erro ao registrar entrega.\\n" + err);
+    setStatus("Erro ao registrar entrega:\n" + err);
     document.getElementById("btnEntregar").disabled = false;
   }
 }

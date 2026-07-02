@@ -10,8 +10,8 @@
 body{margin:0;font-family:Arial,sans-serif;background:#111827;color:white}
 header{padding:16px;text-align:center;background:#1f2937}
 header h1{margin:0;font-size:22px}
-#reader{width:100%;background:black}
-#status{padding:14px;text-align:center;font-size:18px;background:#374151}
+#reader{width:100%;background:black;min-height:260px}
+#status{padding:14px;text-align:center;font-size:18px;background:#374151;white-space:pre-wrap}
 .card{margin:16px;padding:18px;border-radius:14px;background:white;color:#111827;display:none}
 .card h2{margin-top:0;font-size:26px}
 .item{padding:12px 0;border-bottom:1px solid #ddd;font-size:20px}
@@ -37,6 +37,11 @@ button{width:100%;padding:22px;font-size:24px;font-weight:bold;border:none;borde
   <button id="btnNovaLeitura" onclick="reiniciarScanner()">LER OUTRO QR CODE</button>
 </div>
 <script>
+window.onerror = function(msg, src, line, col, err){
+  document.getElementById("status").innerText =
+    "Erro no scanner:\\n" + msg + "\\nLinha: " + line;
+};
+
 const API_BASE = "https://zemariasr.wixsite.com/gelatogalattico/_functions";
 let scanner = null;
 let tokenAtual = null;
@@ -59,7 +64,14 @@ function extrairToken(texto){
 async function iniciarScanner(){
   esconderCard();
   setStatus("Abrindo câmera...");
+  lendo = false;
+
+  if(scanner){
+    try{ await scanner.clear(); }catch(e){}
+  }
+
   scanner = new Html5Qrcode("reader");
+
   try{
     await scanner.start(
       { facingMode: "environment" },
@@ -67,33 +79,41 @@ async function iniciarScanner(){
       async (decodedText)=>{
         if(lendo) return;
         lendo = true;
+
         const token = extrairToken(decodedText);
+        setStatus("QR lido. Token: " + token + "\\nConsultando pedido...");
+
         try{ await scanner.stop(); }catch(e){}
+
         await buscarPedido(token);
       }
     );
     setStatus("Aponte a câmera para o QR Code.");
   }catch(err){
-    setStatus("Erro ao acessar a câmera. Abra esta página diretamente no Safari e permita o uso da câmera.");
+    setStatus("Erro ao acessar a câmera. Abra esta página diretamente no Safari e permita o uso da câmera.\\n" + err);
     console.error(err);
   }
 }
 
 async function buscarPedido(token){
   tokenAtual = token;
-  setStatus("Consultando pedido...");
   try{
-    const resposta = await fetch(`${API_BASE}/buscaPedido?token=${encodeURIComponent(token)}`);
+    const url = `${API_BASE}/buscaPedido?token=${encodeURIComponent(token)}`;
+    const resposta = await fetch(url, { method: "GET" });
+
     if(!resposta.ok){
-      setStatus("Pedido não encontrado.");
+      const texto = await resposta.text();
+      setStatus("Pedido não encontrado.\\nResposta: " + resposta.status + "\\n" + texto);
       mostrarPedidoNaoEncontrado(token);
       return;
     }
+
     const pedido = await resposta.json();
     mostrarPedido(pedido);
+
   }catch(err){
     console.error(err);
-    setStatus("Erro ao consultar pedido.");
+    setStatus("Erro ao consultar pedido.\\nProvável bloqueio CORS ou erro na API.\\n" + err);
   }
 }
 
@@ -128,6 +148,7 @@ function mostrarPedido(pedido){
   mostrarCard();
   document.getElementById("pedidoNumero").innerText = `Pedido #${pedido.numero}`;
   document.getElementById("itens").innerHTML = montarItens(pedido.itens);
+
   if(pedido.status === "Entregue"){
     document.getElementById("pedidoStatus").innerHTML =
       `<div class="alerta">⚠️ PEDIDO JÁ ENTREGUE</div>
@@ -136,7 +157,9 @@ function mostrarPedido(pedido){
     setStatus("Pedido já entregue.");
     return;
   }
-  document.getElementById("pedidoStatus").innerHTML = `<div class="badge pago">STATUS: ${pedido.status}</div>`;
+
+  document.getElementById("pedidoStatus").innerHTML =
+    `<div class="badge pago">STATUS: ${pedido.status}</div>`;
   document.getElementById("btnEntregar").style.display = "block";
   setStatus("Pedido localizado.");
 }
@@ -145,15 +168,19 @@ async function entregarPedido(){
   if(!tokenAtual) return;
   document.getElementById("btnEntregar").disabled = true;
   setStatus("Registrando entrega...");
+
   try{
     const resposta = await fetch(`${API_BASE}/entregarPedido`, {
       method: "POST",
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify({token: tokenAtual})
     });
+
     const dados = await resposta.json();
+
     if(dados.sucesso){
-      document.getElementById("pedidoStatus").innerHTML = `<div class="badge pago">✅ PEDIDO ENTREGUE COM SUCESSO</div>`;
+      document.getElementById("pedidoStatus").innerHTML =
+        `<div class="badge pago">✅ PEDIDO ENTREGUE COM SUCESSO</div>`;
       document.getElementById("btnEntregar").style.display = "none";
       setStatus("Entrega registrada.");
       setTimeout(()=>{reiniciarScanner();}, 2500);
@@ -166,7 +193,7 @@ async function entregarPedido(){
     }
   }catch(err){
     console.error(err);
-    setStatus("Erro ao registrar entrega.");
+    setStatus("Erro ao registrar entrega.\\n" + err);
     document.getElementById("btnEntregar").disabled = false;
   }
 }

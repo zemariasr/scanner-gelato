@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://unpkg.com/html5-qrcode"></script>
+<style>
+body{margin:0;font-family:Arial,sans-serif}
+#reader{width:100vw}
+</style>
+</head>
+<body>
+<div id="reader"></div>
+<script>
+function sendToken(token){
+    window.parent.postMessage({token:token},"*");
+}
+const scanner=new Html5Qrcode("reader");
+Html5Qrcode.getCameras().then(cameras=>{
+    if(cameras && cameras.length){
+        scanner.start(
+            {facingMode:"environment"},
+            {fps:10,qrbox:250},
+            decodedText=>{
+                scanner.stop();
+                sendToken(decodedText);
+            }
+        );
+    }else{
+        document.body.innerHTML="<h2>Nenhuma câmera encontrada.</h2>";
+    }
+}).catch(err=>{
+    document.body.innerHTML="<h2>Erro ao acessar a câmera.</h2><pre>"+err+"</pre>";
+});
+</script>
+</body>
+</html>

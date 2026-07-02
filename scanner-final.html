@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Retirada Gelato Galattico</title>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#111827;color:white}
+header{padding:16px;text-align:center;background:#1f2937}
+header h1{margin:0;font-size:22px}
+#reader{width:100%;min-height:260px;background:black}
+#status{padding:14px;text-align:center;font-size:18px;background:#374151;white-space:pre-wrap}
+.card{margin:16px;padding:18px;border-radius:14px;background:white;color:#111827;display:none}
+.card h2{margin-top:0;font-size:28px}
+.item{padding:14px 0;border-bottom:1px solid #ddd;font-size:20px}
+.item strong{display:block;font-size:24px}
+.sabor{margin-top:6px;font-size:22px}
+.quantidade{margin-top:6px;font-size:20px;font-weight:bold}
+.badge{display:inline-block;padding:10px 14px;border-radius:8px;font-weight:bold;margin-top:12px;font-size:20px}
+.pago{background:#dcfce7;color:#166534}
+.entregue{background:#fee2e2;color:#991b1b}
+button{width:100%;padding:22px;font-size:24px;font-weight:bold;border:none;border-radius:12px;margin-top:18px}
+#btnEntregar{background:#16a34a;color:white}
+#btnNovaLeitura{background:#2563eb;color:white}
+.alerta{text-align:center;font-size:26px;font-weight:bold;color:#991b1b}
+.sucesso{text-align:center;font-size:26px;font-weight:bold;color:#166534}
+</style>
+</head>
+<body>
+<header><h1>Retirada Gelato Galattico</h1></header>
+<div id="reader"></div>
+<div id="status">Abrindo câmera...</div>
+<div id="pedidoCard" class="card">
+  <h2 id="pedidoNumero"></h2>
+  <div id="itens"></div>
+  <div id="pedidoStatus"></div>
+  <button id="btnEntregar" onclick="entregarPedido()">ENTREGAR PEDIDO</button>
+  <button id="btnNovaLeitura" onclick="reiniciarScanner()">NOVA LEITURA</button>
+</div>
+<script>
+const API_BASE="https://zemariasr.wixsite.com/gelatogalattico/_functions";
+let scanner=null, tokenAtual=null, lendo=false;
+
+function setStatus(texto){document.getElementById("status").innerText=texto;}
+function mostrarCard(){document.getElementById("pedidoCard").style.display="block";}
+function esconderCard(){document.getElementById("pedidoCard").style.display="none";}
+
+function extrairToken(texto){
+  if(!texto)return "";
+  try{
+    const url=new URL(texto);
+    const token=url.searchParams.get("token");
+    if(token)return token.trim();
+  }catch(e){}
+  return texto.trim();
+}
+
+async function pararScanner(){
+  if(!scanner)return;
+  try{await scanner.stop();}catch(e){}
+  try{await scanner.clear();}catch(e){}
+}
+
+async function iniciarScanner(){
+  await pararScanner();
+  esconderCard();
+  tokenAtual=null;
+  lendo=false;
+  const btn=document.getElementById("btnEntregar");
+  btn.disabled=false;
+  btn.style.display="block";
+  setStatus("Abrindo câmera...");
+  scanner=new Html5Qrcode("reader");
+  try{
+    await scanner.start(
+      {facingMode:"environment"},
+      {fps:10,qrbox:250},
+      async(decodedText)=>{
+        if(lendo)return;
+        lendo=true;
+        const token=extrairToken(decodedText);
+        tokenAtual=token;
+        setStatus("QR lido. Consultando pedido...");
+        if(navigator.vibrate){navigator.vibrate(80);}
+        await pararScanner();
+        await buscarPedido(token);
+      }
+    );
+    setStatus("Aponte a câmera para o QR Code.");
+  }catch(err){
+    console.error(err);
+    setStatus("Erro ao acessar a câmera. Abra esta página diretamente no Safari e permita o uso da câmera.");
+  }
+}
+
+async function buscarPedido(token){
+  if(!token){
+    mostrarPedidoNaoEncontrado("Token vazio");
+    return;
+  }
+  try{
+    const url=API_BASE+"/buscaPedido?token="+encodeURIComponent(token)+"&t="+Date.now();
+    const resposta=await fetch(url);
+    if(!resposta.ok){
+      mostrarPedidoNaoEncontrado(token);
+      setStatus("Pedido não encontrado.");
+      return;
+    }
+    const pedido=await resposta.json();
+    mostrarPedido(pedido);
+  }catch(err){
+    console.error(err);
+    setStatus("Erro ao consultar pedido.");
+  }
+}
+
+function mostrarPedidoNaoEncontrado(token){
+  mostrarCard();
+  document.getElementById("pedidoNumero").innerText="Pedido não encontrado";
+  document.getElementById("itens").innerHTML="<p>Token lido:</p><p><strong>"+token+"</strong></p>";
+  document.getElementById("pedidoStatus").innerHTML="";
+  document.getElementById("btnEntregar").style.display="none";
+}
+
+function obterSabor(item){
+  if(Array.isArray(item.options)){
+    const sabor=item.options.find(op=>String(op.option||"").toLowerCase().includes("sabor"));
+    if(sabor&&sabor.selection)return sabor.selection;
+    if(item.options.length>0)return item.options.map(op=>op.selection).filter(Boolean).join(" / ");
+  }
+  return item.name||item.productName||"Produto";
+}
+
+function montarItens(itens){
+  if(!Array.isArray(itens))return "<p>Itens não disponíveis.</p>";
+  return itens.map(item=>{
+    const nomeProduto=item.name||item.productName||"Produto";
+    const sabor=obterSabor(item);
+    const quantidade=item.quantity||1;
+    return `<div class="item"><strong>🍨 ${sabor}</strong><div class="sabor">${nomeProduto}</div><div class="quantidade">${quantidade} ${quantidade===1?"unidade":"unidades"}</div></div>`;
+  }).join("");
+}
+
+function formatarData(data){
+  if(!data)return "";
+  try{return new Date(data).toLocaleString("pt-BR");}
+  catch(e){return String(data);}
+}
+
+function mostrarPedido(pedido){
+  mostrarCard();
+  document.getElementById("pedidoNumero").innerText="Pedido #"+pedido.numero;
+  document.getElementById("itens").innerHTML=montarItens(pedido.itens);
+  if(pedido.status==="Entregue"){
+    document.getElementById("pedidoStatus").innerHTML=`<div class="alerta">⚠️ PEDIDO JÁ ENTREGUE</div><div class="badge entregue">${pedido.entregueEm ? "Entregue em "+formatarData(pedido.entregueEm) : "Pedido já retirado"}</div>`;
+    document.getElementById("btnEntregar").style.display="none";
+    setStatus("Pedido já entregue.");
+    if(navigator.vibrate){navigator.vibrate([120,80,120]);}
+    return;
+  }
+  document.getElementById("pedidoStatus").innerHTML=`<div class="badge pago">STATUS: ${pedido.status||"Pago"}</div>`;
+  document.getElementById("btnEntregar").style.display="block";
+  setStatus("Pedido localizado.");
+}
+
+async function entregarPedido(){
+  if(!tokenAtual){
+    setStatus("Nenhum pedido selecionado.");
+    return;
+  }
+  const botao=document.getElementById("btnEntregar");
+  botao.disabled=true;
+  setStatus("Registrando entrega...");
+  try{
+    const url=API_BASE+"/entregarPedido?token="+encodeURIComponent(tokenAtual)+"&t="+Date.now();
+    const resposta=await fetch(url);
+    const dados=await resposta.json();
+    if(resposta.ok && dados.sucesso===true){
+      document.getElementById("pedidoStatus").innerHTML=`<div class="sucesso">✅ PEDIDO ENTREGUE COM SUCESSO</div>`;
+      botao.style.display="none";
+      setStatus("Entrega registrada.");
+      if(navigator.vibrate){navigator.vibrate(180);}
+      setTimeout(()=>{reiniciarScanner();},2500);
+      return;
+    }
+    document.getElementById("pedidoStatus").innerHTML=`<div class="alerta">⚠️ ${dados.mensagem||"Não foi possível registrar a entrega"}</div>`;
+    botao.disabled=false;
+    setStatus("Erro ao registrar entrega.");
+  }catch(err){
+    console.error(err);
+    setStatus("Erro ao registrar entrega.");
+    botao.disabled=false;
+  }
+}
+
+function reiniciarScanner(){iniciarScanner();}
+iniciarScanner();
+</script>
+</body>
+</html>

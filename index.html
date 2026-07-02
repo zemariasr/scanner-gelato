@@ -187,7 +187,6 @@ function mostrarPedido(pedido){
 }
 
 async function entregarPedido(){
-  
   if(!tokenAtual){
     setStatus("Nenhum pedido selecionado.");
     return;
@@ -200,38 +199,27 @@ async function entregarPedido(){
 
   const url = API_BASE + "/entregarPedido?token=" + encodeURIComponent(tokenAtual) + "&t=" + Date.now();
 
-  const img = new Image();
-  img.src = url;
+  const resposta = await fetch(url);
+  const dados = await resposta.json();
 
-  setTimeout(async () => {
-    try {
-      const resposta = await fetch(
-        API_BASE + "/buscaPedido?token=" + encodeURIComponent(tokenAtual) + "&t=" + Date.now()
-      );
+  if(resposta.ok && dados.sucesso === true){
+    document.getElementById("pedidoStatus").innerHTML =
+      `<div class="sucesso">✅ PEDIDO ENTREGUE COM SUCESSO</div>`;
 
-      const pedido = await resposta.json();
+    botao.style.display = "none";
+    setStatus("Entrega registrada.");
 
-      if(pedido.status === "Entregue"){
-        document.getElementById("pedidoStatus").innerHTML =
-          `<div class="sucesso">✅ PEDIDO ENTREGUE COM SUCESSO</div>`;
+    setTimeout(() => {
+      reiniciarScanner();
+    }, 2500);
 
-        botao.style.display = "none";
-        setStatus("Entrega registrada.");
+  } else {
+    document.getElementById("pedidoStatus").innerHTML =
+      `<div class="alerta">⚠️ ${dados.mensagem || "Não foi possível registrar a entrega"}</div>`;
 
-        setTimeout(() => {
-          reiniciarScanner();
-        }, 2500);
-
-      } else {
-        setStatus("A entrega ainda não foi registrada.");
-        botao.disabled = false;
-      }
-
-    } catch(err) {
-      setStatus("Erro ao confirmar entrega.\n" + err);
-      botao.disabled = false;
-    }
-  }, 1200);
+    botao.disabled = false;
+    setStatus("Erro ao registrar entrega.");
+  }
 }
 
 function reiniciarScanner(){iniciarScanner();}
